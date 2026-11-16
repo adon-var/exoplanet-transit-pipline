@@ -1,0 +1,10 @@
+name: exoplanet
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - lightkurve
+  - python=3.11
+  - matplotlib
+  - astropy
+prefix: /home/adon_varghese/miniconda3/envs/exoplanet

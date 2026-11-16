@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+outputs/*.png
+.vscode/
+.DS_Store
+
