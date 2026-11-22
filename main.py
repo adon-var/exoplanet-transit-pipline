@@ -1,3 +1,4 @@
+import argparse
 import matplotlib.pyplot as plt
 from src.fetcher import LightCurveFetcher
 from src.cleaner import LightCurveCleaner
@@ -6,10 +7,7 @@ from src.vetter import TransitVetter
 from src.characterizer import PlanetCharacterizer
 
 
-def run_pipeline():
-    target = "Pi Mensae"
-    sectors = [1, 4, 8]
-
+def run_pipeline(target: str, sectors: list[int] | None = None, max_period: float = 15.0):
     # 1. Ingest Data
     fetcher = LightCurveFetcher(target=target)
     lc_collection = fetcher.fetch_sector(sectors=sectors)
@@ -19,9 +17,9 @@ def run_pipeline():
     stitched_lc = cleaner.stitch_and_clean(lc_collection)
 
     # 3. Stage 1: Broad Blind BLS Search
-    detector = TransitDetector(min_period=1.0, max_period=15.0)
+    detector = TransitDetector(min_period=0.5, max_period=max_period)
     candidates = detector.search_multi_planet(stitched_lc, max_planets=1)
-    primary = candidates[0]
+    primary = candidates [0]  # Focus on the first detected candidate
     bls_period = float(primary["period"].value)
 
     # 4. Stage 2: Physical TLS Refinement & False-Positive Vetting
@@ -50,22 +48,21 @@ def run_pipeline():
         depth=tls_res["tls_depth"],
     )
 
-    print("\n================ CHARACTERIZATION REPORT ================")
+    print(f"\n================ {target.upper()} REPORT ================")
     print(f"Host Star (TIC {star['tic_id']}) : R* = {star['r_star_solar']:.2f} R_sun | M* = {star['m_star_solar']:.2f} M_sun | Teff = {star['teff_k']:.0f} K")
     print(f"Refined Period        : {tls_res['tls_period']:.6f} days (SNR = {tls_res['tls_snr']:.1f})")
     print(f"Odd/Even Vetting      : Diff = {odd_even['sigma_diff']:.2f} sigma -> PASSED: {odd_even['passed']}")
     print(f"Planetary Radius      : {planet['radius_earth']:.2f} Earth radii")
     print(f"Semi-Major Axis       : {planet['semi_major_axis_au']:.4f} AU")
-    print(f"Equilibrium Temp      : {planet['equilibrium_temp_k']:.0f} K (assuming Albedo = 0.3)")
+    print(f"Equilibrium Temp      : {planet['equilibrium_temp_k']:.0f} K")
     print(f"Individual Transits   : Measured {len(ttv['epochs'])} epochs for TTV O-C analysis")
     print("=========================================================\n")
 
-    # 6. Plot 3-Panel Summary: BLS Periodogram, TLS Transit Fit, and TTV O-C Residuals
+    # 6. Plot & Save
     folded = stitched_lc.fold(period=tls_res["tls_period"], epoch_time=tls_res["tls_t0"])
     binned = folded.bin(time_bin_size=0.02)
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 11))
-
     primary["bls_object"].plot(ax=axes[0], color="navy")
     axes[0].set_title(f"{target} — Stage 1 Broad BLS Periodogram")
 
@@ -83,11 +80,19 @@ def run_pipeline():
     axes[2].set_ylabel("O - C Residual [minutes]")
     axes[2].set_title("Stage 3 Transit Timing Variations (TTV O - C Diagram)")
 
+    safe_name = target.lower().replace(" ", "_")
+    out_path = f"outputs/{safe_name}_characterization.png"
     plt.tight_layout()
-    plt.savefig("outputs/pi_mensae_full_characterization.png", dpi=300)
-    print("[Pipeline] Saved 3-panel figure to outputs/pi_mensae_full_characterization.png")
+    plt.savefig(out_path, dpi=300)
+    print(f"[Pipeline] Saved 3-panel figure to {out_path}")
     plt.show()
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    parser = argparse.ArgumentParser(description="Multi-Sector TESS Exoplanet Transit & Characterization Pipeline")
+    parser.add_argument("--target", type=str, default="Pi Mensae", help="Target star name or TIC ID (e.g. 'TOI-700' or 'WASP-18')")
+    parser.add_argument("--sectors", type=int, nargs="*", default=None, help="Specific TESS sectors (optional)")
+    parser.add_argument("--max-period", type=float, default=15.0, help="Maximum orbital period to search in days")
+    args = parser.parse_args()
+
+    run_pipeline(target=args.target, sectors=args.sectors, max_period=args.max_period)
