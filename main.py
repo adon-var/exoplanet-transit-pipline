@@ -7,14 +7,17 @@ from src.vetter import TransitVetter
 from src.characterizer import PlanetCharacterizer
 
 
-def run_pipeline(target: str, sectors: list[int] | None = None, max_period: float = 15.0):
-    # 1. Ingest Data
+def run_pipeline(target: str, sectors: list[int] | None = None, max_period: float = 15.0, refresh: bool = False):
+     # 1. Ingest Data (Check local cache first)
     fetcher = LightCurveFetcher(target=target)
-    lc_collection = fetcher.fetch_sector(sectors=sectors)
+    stitched_lc = None if refresh else fetcher.load_cached_stitched(sectors=sectors)
 
-    # 2. Clean & Stitch
-    cleaner = LightCurveCleaner(sigma=5.0, window_length=1001)
-    stitched_lc = cleaner.stitch_and_clean(lc_collection)
+    if stitched_lc is None:
+        lc_collection = fetcher.fetch_sector(sectors=sectors)
+        # 2. Clean & Stitch
+        cleaner = LightCurveCleaner(sigma=5.0, window_length=1001)
+        stitched_lc = cleaner.stitch_and_clean(lc_collection)
+        fetcher.save_cached_stitched(stitched_lc, sectors=sectors)
 
     # 3. Stage 1: Broad Blind BLS Search
     detector = TransitDetector(min_period=0.5, max_period=max_period)
@@ -87,12 +90,12 @@ def run_pipeline(target: str, sectors: list[int] | None = None, max_period: floa
     print(f"[Pipeline] Saved 3-panel figure to {out_path}")
     plt.show()
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Multi-Sector TESS Exoplanet Transit & Characterization Pipeline")
     parser.add_argument("--target", type=str, default="Pi Mensae", help="Target star name or TIC ID (e.g. 'TOI-700' or 'WASP-18')")
     parser.add_argument("--sectors", type=int, nargs="*", default=None, help="Specific TESS sectors (optional)")
     parser.add_argument("--max-period", type=float, default=15.0, help="Maximum orbital period to search in days")
+    parser.add_argument("--refresh", action="store_true", help="Force re-download from MAST instead of using local cache")
     args = parser.parse_args()
 
-    run_pipeline(target=args.target, sectors=args.sectors, max_period=args.max_period)
+    run_pipeline(target=args.target, sectors=args.sectors, max_period=args.max_period, refresh=args.refresh)

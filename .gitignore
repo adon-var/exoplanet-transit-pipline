@@ -4,3 +4,4 @@ outputs/*.png
 .vscode/
 .DS_Store
 
+data/*.fits
