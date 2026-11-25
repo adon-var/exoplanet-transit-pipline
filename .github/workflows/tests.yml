@@ -28,8 +28,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          conda install -y astropy lightkurve astroquery scipy matplotlib numpy pytest pip
-          pip install transitleastsquares
+          conda install -y astropy lightkurve astroquery scipy matplotlib numpy pytest emcee corner pip
+          pip install transitleastsquares batman-package
 
       - name: Run pytest suite
         run: |

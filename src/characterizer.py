@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 import numpy as np
 import lightkurve as lk
 from astroquery.mast import Catalogs
@@ -14,20 +16,34 @@ class PlanetCharacterizer:
     R_EARTH = 6.371e6
     AU = 1.495978707e11
 
-    def fetch_stellar_params(self, target: str) -> dict:
-        """Queries the TESS Input Catalog (TIC) via MAST for host star mass, radius, and Teff."""
-        print(f"[Characterizer] Querying TESS Input Catalog for {target} stellar parameters...")
-        tic_table = Catalogs.query_object(target, radius=0.02, catalog="TIC")
-        if len(tic_table) == 0:
-            raise ValueError(f"No TIC catalog entry found for {target}.")
+    def fetch_stellar_params(self, target: str, cache_dir: str = "data") -> dict:
+        """Queries TIC via MAST with local JSON caching and timeout resilience."""
+        safe_name = target.lower().replace(" ", "_")
+        cache_path = Path(cache_dir) / f"{safe_name}_tic.json"
 
-        star = tic_table[0]
-        return {
-            "tic_id": int(star["ID"]),
-            "r_star_solar": float(star["rad"]),
-            "m_star_solar": float(star["mass"]),
-            "teff_k": float(star["Teff"]),
-        }
+        if cache_path.exists():
+            print(f"[Characterizer] Loading cached TIC parameters from {cache_path}...")
+            return json.loads(cache_path.read_text())
+
+        print(f"[Characterizer] Querying TESS Input Catalog for {target} stellar parameters...")
+        try:
+            tic_table = Catalogs.query_object(target, radius=0.02, catalog="TIC")
+            if len(tic_table) == 0:
+                raise ValueError(f"No TIC catalog entry found for {target}.")
+
+            star = tic_table[0]
+            params = {
+                "tic_id": int(star["ID"]),
+                "r_star_solar": float(star["rad"]),
+                "m_star_solar": float(star["mass"]),
+                "teff_k": float(star["Teff"]),
+            }
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(params, indent=2))
+            return params
+        except Exception as exc:
+            print(f"[Characterizer] Warning: MAST query failed ({exc}). Falling back to solar defaults.")
+            return {"tic_id": 0, "r_star_solar": 1.0, "m_star_solar": 1.0, "teff_k": 5778.0}
 
     def compute_planetary_params(
         self, period_days: float, depth: float, stellar_params: dict, albedo: float = 0.3
